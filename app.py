@@ -1,5 +1,5 @@
 import streamlit as st
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 import plotly.graph_objects as go
 

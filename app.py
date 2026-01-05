@@ -60,7 +60,9 @@ S0 = st.sidebar.slider(
     help='Initial fraction of naive offenders')
 
 I0 = 1 - S0
-st.sidebar.markdown(f'Initial fraction of offenders involved in co-offending: **{I0:.2f}**')
+st.sidebar.markdown(
+    f'I0 = **{I0:.2f}**',
+    help='Initial fraction of offenders involved in co-offending')
 
 
 

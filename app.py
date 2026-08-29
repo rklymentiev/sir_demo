@@ -136,7 +136,7 @@ mu = st.sidebar.slider(
          "incapacitation or death.")
 
 st.sidebar.markdown("---")
-T = st.sidebar.slider("Time horizon", 50, 1000, 250, 50)
+T = st.sidebar.slider("Time horizon", 50, 500, 250, 50)
 S0 = st.sidebar.slider(
     r"Initial naive share ($S_0$)", 0.0, 1.0, 0.9, 0.05,
     help="The remainder starts in the co-offending state.")

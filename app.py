@@ -90,53 +90,70 @@ def equilibria(beta, gamma, omega, eta, mu):
 # ----------------------------------------------------------------------------
 st.sidebar.header("Parameters")
 
-preset = st.sidebar.selectbox(
-    "Preset",
-    ["Custom",
-     "Endemic co-offending",
-     "Co-offending dies out",
-     "Baseline model (no decay, turnover or asocial learning)",
-     "Skill decay only (μ = η = 0)",
-     "Turnover only (ω = η = 0)"],
-)
+PRESETS = {
+    "Endemic co-offending":
+        dict(beta=1.0, gamma=0.1, omega=0.1, eta=0.2, mu=0.05),
+    "Co-offending dies out":
+        dict(beta=0.1, gamma=1.0, omega=0.05, eta=0.2, mu=0.04),
+    "Baseline model (no decay, turnover or asocial learning)":
+        dict(beta=1.0, gamma=0.1, omega=0.0, eta=0.0, mu=0.0),
+    "Skill decay only (μ = η = 0)":
+        dict(beta=1.0, gamma=0.1, omega=0.1, eta=0.0, mu=0.0),
+    "Turnover only (ω = η = 0)":
+        dict(beta=1.0, gamma=0.1, omega=0.0, eta=0.0, mu=0.05),
+}
 
-P = dict(beta=1.0, gamma=0.1, omega=0.1, eta=0.2, mu=0.05)
-if preset == "Co-offending dies out":
-    P = dict(beta=0.1, gamma=1.0, omega=0.05, eta=0.2, mu=0.04)
-elif preset.startswith("Baseline"):
-    P = dict(beta=1.0, gamma=0.1, omega=0.0, eta=0.0, mu=0.0)
-elif preset.startswith("Skill decay only"):
-    P = dict(beta=1.0, gamma=0.1, omega=0.1, eta=0.0, mu=0.0)
-elif preset.startswith("Turnover only"):
-    P = dict(beta=1.0, gamma=0.1, omega=0.0, eta=0.0, mu=0.05)
+# Sliders keep their own state once touched, so a preset has to write into
+# session state through a callback rather than passing a new default value.
+def apply_preset():
+    for k, v in PRESETS.get(st.session_state.preset, {}).items():
+        st.session_state[k] = v
+
+
+def mark_custom():
+    """Moving any slider by hand puts the selector back to Custom."""
+    st.session_state.preset = "Custom"
+
+
+for _k, _v in PRESETS["Endemic co-offending"].items():
+    st.session_state.setdefault(_k, _v)
+st.session_state.setdefault("preset", "Endemic co-offending")
+
+st.sidebar.selectbox(
+    "Preset", ["Custom"] + list(PRESETS), key="preset", on_change=apply_preset)
 
 beta = st.sidebar.slider(
-    r"Collaboration-initiation rate ($\beta$)", 0.0, 1.0, P["beta"], 0.01,
+    r"Collaboration-initiation rate ($\beta$)", 0.0, 1.0, step=0.01,
+    key="beta", on_change=mark_custom,
     help="Rate at which naive offenders begin co-offending: recruitment, "
          "situational demand for partners, and convergence in space and time.")
 
 gamma = st.sidebar.slider(
-    r"Collaborative-learning rate ($\gamma$)", 0.01, 1.0, P["gamma"], 0.01,
+    r"Collaborative-learning rate ($\gamma$)", 0.01, 1.0, step=0.01,
+    key="gamma", on_change=mark_custom,
     help="Rate at which co-offenders acquire enough skill to offend alone. "
          "Higher values mean shorter reliance on partners.")
 
 omega = st.sidebar.slider(
-    r"Skill-decay rate ($\omega$)", 0.0, 1.0, P["omega"], 0.01,
+    r"Skill-decay rate ($\omega$)", 0.0, 1.0, step=0.01,
+    key="omega", on_change=mark_custom,
     help="Rate at which knowledgeable offenders lose the skill and return to "
          "the naive state, through forgetting or obsolescence.")
 
 eta = st.sidebar.slider(
-    r"Asocial-learning rate ($\eta$)", 0.0, 1.0, P["eta"], 0.01,
+    r"Asocial-learning rate ($\eta$)", 0.0, 1.0, step=0.01,
+    key="eta", on_change=mark_custom,
     help="Rate at which naive offenders acquire the skill on their own, "
          "bypassing co-offending entirely.")
 
 mu = st.sidebar.slider(
-    r"Demographic turnover rate ($\mu$)", 0.0, 0.5, P["mu"], 0.01,
+    r"Demographic turnover rate ($\mu$)", 0.0, 0.5, step=0.01,
+    key="mu", on_change=mark_custom,
     help="Onset of new naive offenders, and exit through desistance, "
          "incapacitation or death.")
 
 st.sidebar.markdown("---")
-T = st.sidebar.slider("Time horizon", 50, 500, 250, 50)
+T = st.sidebar.slider("Time horizon", 25, 250, 100, 25)
 S0 = st.sidebar.slider(
     r"Initial naive share ($S_0$)", 0.0, 1.0, 0.9, 0.05,
     help="The remainder starts in the co-offending state.")

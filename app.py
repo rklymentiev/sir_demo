@@ -177,14 +177,14 @@ cofe_S, ee_S, ee_C = equilibria(beta, gamma, omega, eta, mu)
 # ----------------------------------------------------------------------------
 # Headline readout
 # ----------------------------------------------------------------------------
-m1, m2, m3, m4 = st.columns(4)
+m1, m2, m3 = st.columns(3)
 m1.metric("Basic reproduction number $\\mathcal{R}_0$",
           "—" if np.isnan(R0) else f"{R0:.2f}")
 m2.metric("Long-run outcome",
           "Endemic (EE)" if (ee_C is not None) else "Dies out (COFE)")
 m3.metric("Equilibrium co-offending $C^*$",
           f"{ee_C:.3f}" if ee_C is not None else "0.000")
-m4.metric("Co-offending at end of run", f"{C[-1]:.3f}")
+# m4.metric("Co-offending at end of run", f"{C[-1]:.3f}")
 
 if np.isnan(R0):
     st.warning(
@@ -227,9 +227,9 @@ with tab1:
                                  line=dict(color=C_K, width=1.3, dash="dash")))
         fig.add_trace(go.Scatter(x=t, y=Ka, name="K via asocial learning",
                                  line=dict(color=C_K, width=1.3, dash="dot")))
-    if ee_C is not None:
-        fig.add_hline(y=ee_C, line=dict(color=C_C, width=1, dash="dot"),
-                      annotation_text="C*", annotation_position="right")
+    # if ee_C is not None:
+    #     fig.add_hline(y=ee_C, line=dict(color=C_C, width=1, dash="dot"),
+    #                   annotation_text="C*", annotation_position="right")
     fig.update_layout(
         template=PLOT_TEMPLATE, height=460,
         paper_bgcolor=PLOT_BG, plot_bgcolor=PLOT_BG,
@@ -349,7 +349,7 @@ An endemic equilibrium exists and is stable when $\mathcal{R}_0 > 1$, with
 
 $$C^* = \frac{\beta(\mu+\omega) - (\mu+\omega+\eta)(\gamma+\mu)}{\beta(\gamma+\mu+\omega)}$$
 
-### Things worth trying
+### Things to try
 
 - Set $\mu = \eta = 0$ and raise $\omega$. Co-offending persists on **skill
   decay alone**.

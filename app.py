@@ -3,6 +3,8 @@ import streamlit as st
 from scipy.integrate import solve_ivp
 import plotly.graph_objects as go
 
+from live_sim import simulation_tab
+
 # ----------------------------------------------------------------------------
 # Page config
 # ----------------------------------------------------------------------------
@@ -206,7 +208,8 @@ else:
         "equilibrium."
     )
 
-tab1, tab2, tab3 = st.tabs(["Dynamics over time", "Phase portrait", "About the model"])
+tab1, tab2, tab4, tab3 = st.tabs(
+    ["Dynamics over time", "Phase portrait", "Live simulation", "About the model"])
 
 # ----------------------------------------------------------------------------
 # Tab 1: time series
@@ -318,6 +321,13 @@ with tab2:
             "$\\eta$) collapses the baseline model's *line* of co-offending-free "
             "equilibria to this single point."
         )
+
+# ----------------------------------------------------------------------------
+# Tab 4: agent-level animation
+# ----------------------------------------------------------------------------
+with tab4:
+    simulation_tab(
+        dict(beta=beta, gamma=gamma, omega=omega, eta=eta, mu=mu), _dark)
 
 # ----------------------------------------------------------------------------
 # Tab 3: explanation

@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+:root{
+  --S:#1f77b4; --C:#ff7f0e; --K:#2ca02c; --E:#9467bd;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+body.light{ --fg:#24292f; --muted:#57606a; --dim:#8b949e; --line:rgba(0,0,0,0.16); --panel:rgba(128,128,128,0.08); --edge:rgba(128,128,128,0.25); }
+body.dark { --fg:#e8e8ea; --muted:#9aa3ad; --dim:#6e7781; --line:rgba(255,255,255,0.20); --panel:rgba(128,128,128,0.12); --edge:rgba(128,128,128,0.28); }
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:transparent;font-family:var(--sans);color:var(--fg);overflow:hidden}
+#wrap{display:flex;flex-direction:column;gap:12px}
+
+/* ---- stage ---- */
+#stagebox{width:100%;height:330px;position:relative}
+canvas{display:block;width:100%;height:100%}
+
+/* ---- readout ---- */
+#readout{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.card{background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:9px 13px}
+.card .lbl{font-size:11.5px;color:var(--muted);letter-spacing:.02em;margin-bottom:2px}
+.card .val{font-size:20px;font-weight:600;line-height:1.15}
+.card .sub{font-size:11px;color:var(--dim);margin-top:1px}
+
+/* ---- controls ---- */
+#chips{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chip{
+  font-family:var(--sans);font-size:13px;color:var(--muted);
+  background:transparent;border:1px solid var(--edge);border-radius:999px;
+  padding:6px 14px;cursor:pointer;display:inline-flex;align-items:baseline;gap:7px;
+  transition:background-color .15s,color .15s,border-color .15s;
+}
+.chip:hover{color:var(--fg)}
+.chip .gk{font-style:italic;font-size:1.05em;opacity:.8}
+.chip[data-on="1"]{color:#fff;font-weight:600;border-color:transparent}
+.chip.w-om[data-on="1"]{background:var(--K)}
+.chip.w-eta[data-on="1"]{background:var(--E)}
+.chip.w-mu[data-on="1"]{background:var(--S)}
+.chip.ghost{border-style:dashed}
+.chip:focus-visible{outline:2px solid var(--S);outline-offset:2px}
+
+#sliders{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 22px}
+.sl{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center}
+.sl label{font-size:12.5px;color:var(--muted);white-space:nowrap;min-width:8.4em}
+.sl input[type=range]{width:100%;accent-color:var(--S);height:18px}
+.sl output{font-size:12.5px;color:var(--fg);min-width:3.2em;text-align:right;font-variant-numeric:tabular-nums}
+.sl.off label,.sl.off output{opacity:.4}
+
+.note{font-size:11.5px;color:var(--dim);line-height:1.5}
+</style>
+</head>
+<body class="__THEME__">
+
+<div id="wrap">
+  <div id="stagebox"><canvas id="cv"></canvas></div>
+
+  <div id="readout">
+    <div class="card"><div class="lbl">Naive (S)</div><div class="val" id="rS" style="color:var(--S)">—</div><div class="sub" id="rSt"></div></div>
+    <div class="card"><div class="lbl">Co-offending (C)</div><div class="val" id="rC" style="color:var(--C)">—</div><div class="sub" id="rCt"></div></div>
+    <div class="card"><div class="lbl">Knowledgeable (K)</div><div class="val" id="rK" style="color:var(--K)">—</div><div class="sub" id="rKt"></div></div>
+    <div class="card"><div class="lbl">Reproduction number</div><div class="val" id="rR">—</div><div class="sub" id="rRt"></div></div>
+  </div>
+
+  <div id="chips">
+    <button class="chip w-om"  data-param="omega" id="c_om">Skill decay <span class="gk">&omega;</span></button>
+    <button class="chip w-eta" data-param="eta"   id="c_eta">Asocial learning <span class="gk">&eta;</span></button>
+    <button class="chip w-mu"  data-param="mu"    id="c_mu">Demographic turnover <span class="gk">&mu;</span></button>
+    <button class="chip ghost" id="c_reset">Restart</button>
+  </div>
+
+  <div id="sliders">
+    <div class="sl" id="sl_beta"><label>Initiation &beta;</label><input type="range" id="beta" min="0" max="1" step="0.01"><output id="o_beta"></output></div>
+    <div class="sl" id="sl_gamma"><label>Learning &gamma;</label><input type="range" id="gamma" min="0.01" max="1" step="0.01"><output id="o_gamma"></output></div>
+    <div class="sl" id="sl_omega"><label>Skill decay &omega;</label><input type="range" id="omega" min="0" max="1" step="0.01"><output id="o_omega"></output></div>
+    <div class="sl" id="sl_eta"><label>Asocial learning &eta;</label><input type="range" id="eta" min="0" max="1" step="0.01"><output id="o_eta"></output></div>
+    <div class="sl" id="sl_mu"><label>Turnover &mu;</label><input type="range" id="mu" min="0" max="0.5" step="0.01"><output id="o_mu"></output></div>
+    <div class="sl"><label>Offenders <i>N</i></label><input type="range" id="N" min="40" max="600" step="20"><output id="o_N"></output></div>
+  </div>
+
+  <p class="note" id="note"></p>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+var CFG = __PARAMS__;
+
+var css = getComputedStyle(document.body);
+function v(n){ return css.getPropertyValue(n).trim(); }
+function hex2rgb(x){
+  x = x.replace('#','');
+  return {r:parseInt(x.substr(0,2),16), g:parseInt(x.substr(2,2),16), b:parseInt(x.substr(4,2),16)};
+}
+var COL = {S:hex2rgb(v('--S')), C:hex2rgb(v('--C')), K:hex2rgb(v('--K'))};
+var COL_E = hex2rgb(v('--E'));
+var FG = v('--fg'), MUTED = v('--muted'), DIM = v('--dim'), LINE = v('--line');
+
+function rgba(c,a){ return "rgba("+Math.round(c.r)+","+Math.round(c.g)+","+Math.round(c.b)+","+a+")"; }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function mixCol(a,b,t){ return {r:lerp(a.r,b.r,t), g:lerp(a.g,b.g,t), b:lerp(a.b,b.b,t)}; }
+function ease(t){ return t<0.5 ? 2*t*t : -1+(4-2*t)*t; }
+function qbez(p0,cp,p1,t){
+  var u=1-t;
+  return {x:u*u*p0.x+2*u*t*cp.x+t*t*p1.x, y:u*u*p0.y+2*u*t*cp.y+t*t*p1.y};
+}
+
+/* ===================== simulation ===================== */
+
+function Stage(canvas){
+  this.canvas = canvas;
+  this.ctx = canvas.getContext("2d");
+  this.P = {beta:CFG.beta, gamma:CFG.gamma, omega:CFG.omega, eta:CFG.eta, mu:CFG.mu};
+  this.speed = 1.6;
+  this.acc = 0;
+  this.agents = [];
+  this.seed(CFG.N, CFG.S0);
+}
+
+Stage.prototype.seed = function(n, s0){
+  this.n = n;
+  this.agents = [];
+  var nS = Math.round(n*s0);
+  for (var i=0;i<n;i++){
+    this.agents.push({st: i<nS ? "S" : "C", x:0, y:0, hx:0, hy:0,
+                      tr:null, queue:null, ph:Math.random()*6.28, sp:0.5+Math.random()*0.9});
+  }
+  this.needHome = true;
+};
+
+Stage.prototype.resize = function(n){
+  var cur = this.agents.length;
+  if (n === cur) return;
+  if (n < cur){ this.agents.length = n; }
+  else {
+    // new arrivals join as naive offenders, entering from the left
+    for (var i=cur;i<n;i++){
+      var hm = this.homeFor("S");
+      this.agents.push({st:"S", x:this.entry.x, y:this.entry.y, hx:hm.x, hy:hm.y,
+                        tr:null, queue:null, ph:Math.random()*6.28, sp:0.5+Math.random()*0.9});
+    }
+  }
+  this.n = n;
+};
+
+Stage.prototype.layout = function(){
+  var c = this.canvas;
+  var dpr = Math.min(window.devicePixelRatio||1, 2);
+  var rect = c.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return false;
+  var w = Math.round(rect.width), h = Math.round(rect.height);
+  if (c.width !== w*dpr || c.height !== h*dpr){
+    c.width = w*dpr; c.height = h*dpr;
+    this.ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  this.w = w; this.h = h;
+
+  var inset = Math.min(w*0.14, 100);
+  var usable = w - inset;
+  var bw = Math.min(usable*0.235, 210);
+  var bh = Math.min(h*0.32, 118);
+  var cy = h*0.46;
+  var cx = [inset + usable*0.16, inset + usable*0.50, inset + usable*0.84];
+
+  this.boxes = {};
+  ["S","C","K"].forEach(function(k,i){
+    this.boxes[k] = {x:cx[i]-bw/2, y:cy-bh/2, w:bw, h:bh, cx:cx[i], cy:cy};
+  }, this);
+
+  var b = this.boxes;
+  var arcTop = Math.max(h*0.05, cy - bh/2 - h*0.26);
+  var arcBot = Math.min(h*0.94, cy + bh/2 + h*0.30);
+
+  this.paths = {
+    SC:{p0:{x:b.S.x+b.S.w, y:cy}, cp:{x:(b.S.x+b.S.w+b.C.x)/2, y:cy}, p1:{x:b.C.x, y:cy}},
+    CK:{p0:{x:b.C.x+b.C.w, y:cy}, cp:{x:(b.C.x+b.C.w+b.K.x)/2, y:cy}, p1:{x:b.K.x, y:cy}},
+    KS:{p0:{x:b.K.cx, y:b.K.y}, cp:{x:w*0.5, y:arcTop}, p1:{x:b.S.cx, y:b.S.y}},
+    SK:{p0:{x:b.S.cx, y:b.S.y+b.S.h}, cp:{x:w*0.5, y:arcBot}, p1:{x:b.K.cx, y:b.K.y+b.K.h}}
+  };
+  this.entry = {x:Math.max(4, b.S.x - w*0.10), y:cy};
+  this.outLen = Math.min(Math.max(bh*0.30, 14), 32);
+  this.diagBottom = arcBot;
+  return true;
+};
+
+Stage.prototype.homeFor = function(st){
+  var b = this.boxes[st], pad = Math.min(b.w,b.h)*0.16;
+  return {x:b.x+pad+Math.random()*(b.w-2*pad), y:b.y+pad+Math.random()*(b.h-2*pad)};
+};
+
+Stage.prototype.placeAll = function(){
+  for (var i=0;i<this.agents.length;i++){
+    var a = this.agents[i], hm = this.homeFor(a.st);
+    a.hx=hm.x; a.hy=hm.y; a.x=hm.x; a.y=hm.y; a.tr=null; a.queue=null;
+  }
+  this.needHome = false;
+};
+
+Stage.prototype.counts = function(){
+  var s=0,c=0,k=0;
+  for (var i=0;i<this.agents.length;i++){
+    var st=this.agents[i].st;
+    if (st==="S") s++; else if (st==="C") c++; else k++;
+  }
+  return {S:s,C:c,K:k,N:this.agents.length};
+};
+
+Stage.prototype.pathTransit = function(a, from, to){
+  var path = this.paths[from+to];
+  if (!path) return;
+  var hm = this.homeFor(to);
+  a.hx=hm.x; a.hy=hm.y;
+  a.tr = {from:from, to:to, kind:"move", t:0, dur:0.55+Math.random()*0.35,
+          p0:{x:a.x,y:a.y},
+          cp:{x:path.cp.x, y:path.cp.y+(Math.random()-0.5)*16},
+          path:path};
+};
+
+Stage.prototype.startTransit = function(a, from, to){
+  a.st = to;
+  this.pathTransit(a, from, to);
+};
+
+// State changes the instant a transition fires, so the simulation is an exact
+// tau-leap of the ODEs. The drawing is queued: a dot must finish the leg it is
+// on before the next is drawn, otherwise it would be re-routed mid-flight and
+// appear to travel along an arrow the model does not contain.
+Stage.prototype.fire = function(a, from, to){
+  if (a.tr || (a.queue && a.queue.length)){
+    a.st = to;
+    var q = a.queue || (a.queue = []);
+    q.push([from,to]);
+    if (q.length > 3){
+      a.queue=null; a.tr=null;
+      var hm=this.homeFor(to); a.hx=hm.x; a.hy=hm.y; a.x=hm.x; a.y=hm.y;
+    }
+    return;
+  }
+  this.startTransit(a, from, to);
+};
+
+Stage.prototype.step = function(dt){
+  var P=this.P, ag=this.agents, N=ag.length;
+  if (!N) return;
+  var cf = this.counts().C / N;
+  for (var i=0;i<N;i++){
+    var a = ag[i];
+    if (P.mu>0 && Math.random() < P.mu*dt){
+      var was=a.st; a.st="S"; a.queue=null;
+      // the replacement offender is naive, so its destination is the S box;
+      // without this it would drift back to the box it exited from
+      var hmT=this.homeFor("S"); a.hx=hmT.x; a.hy=hmT.y;
+      a.tr={kind:"turn", phase:"out", t:0, dur:0.40, from:was, to:"S",
+            p0:{x:a.x,y:a.y},
+            exit:{x:a.x+(Math.random()-0.5)*34, y:this.diagBottom+this.h*0.14}};
+      continue;
+    }
+    if (a.st==="S"){
+      if (P.beta>0 && Math.random() < P.beta*cf*dt){ this.fire(a,"S","C"); continue; }
+      if (P.eta>0  && Math.random() < P.eta*dt)    { this.fire(a,"S","K"); continue; }
+    } else if (a.st==="C"){
+      if (P.gamma>0 && Math.random() < P.gamma*dt) { this.fire(a,"C","K"); continue; }
+    } else {
+      if (P.omega>0 && Math.random() < P.omega*dt) { this.fire(a,"K","S"); continue; }
+    }
+  }
+};
+
+Stage.prototype.advance = function(rdt){
+  var ag=this.agents;
+  for (var i=0;i<ag.length;i++){
+    var a=ag[i], tr=a.tr;
+    if (tr){
+      tr.t += rdt/tr.dur;
+      if (tr.kind==="turn"){
+        if (tr.phase==="out"){
+          var t1=Math.min(1,tr.t);
+          a.x=lerp(tr.p0.x,tr.exit.x,t1);
+          a.y=lerp(tr.p0.y,tr.exit.y,ease(t1));
+          if (tr.t>=1){
+            tr.phase="in"; tr.t=0; tr.dur=0.48;
+            a.x=this.entry.x; a.y=this.entry.y+(Math.random()-0.5)*26;
+            tr.p0={x:a.x,y:a.y};
+          }
+        } else {
+          var t2=Math.min(1,tr.t);
+          a.x=lerp(tr.p0.x,a.hx,ease(t2));
+          a.y=lerp(tr.p0.y,a.hy,ease(t2));
+          if (tr.t>=1){
+            a.tr=null;
+            if (a.queue && a.queue.length){ var lg=a.queue.shift(); this.pathTransit(a,lg[0],lg[1]); }
+          }
+        }
+      } else {
+        var t=Math.min(1,tr.t);
+        var pt=qbez(tr.p0,tr.cp,tr.path.p1,ease(t));
+        a.x=pt.x; a.y=pt.y;
+        if (tr.t>=1){
+          a.tr=null;
+          if (a.queue && a.queue.length){ var lg2=a.queue.shift(); this.pathTransit(a,lg2[0],lg2[1]); }
+        }
+      }
+    } else {
+      a.ph += rdt*a.sp;
+      a.x += (a.hx+Math.cos(a.ph)*2.6-a.x)*Math.min(1,rdt*4.5);
+      a.y += (a.hy+Math.sin(a.ph*1.3)*2.6-a.y)*Math.min(1,rdt*4.5);
+    }
+  }
+};
+
+Stage.prototype.arrow = function(path, active, label, col, side){
+  var ctx=this.ctx;
+  ctx.save();
+  ctx.strokeStyle = active ? rgba(col,0.55) : LINE;
+  ctx.lineWidth = active ? 1.8 : 1;
+  if (!active) ctx.setLineDash([4,5]);
+  ctx.beginPath();
+  ctx.moveTo(path.p0.x,path.p0.y);
+  ctx.quadraticCurveTo(path.cp.x,path.cp.y,path.p1.x,path.p1.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  var a1=qbez(path.p0,path.cp,path.p1,0.94), a2=path.p1;
+  var ang=Math.atan2(a2.y-a1.y,a2.x-a1.x), hs=active?7:5.5;
+  ctx.fillStyle = active ? rgba(col,0.75) : LINE;
+  ctx.beginPath();
+  ctx.moveTo(a2.x,a2.y);
+  ctx.lineTo(a2.x-hs*Math.cos(ang-0.42), a2.y-hs*Math.sin(ang-0.42));
+  ctx.lineTo(a2.x-hs*Math.cos(ang+0.42), a2.y-hs*Math.sin(ang+0.42));
+  ctx.closePath(); ctx.fill();
+
+  var mid=qbez(path.p0,path.cp,path.p1,0.5);
+  var size=11.5;
+  if (side==="mid"){
+    var gap=Math.abs(path.p1.x-path.p0.x)*0.90;
+    ctx.font="600 11.5px "+v('--sans');
+    var wt=ctx.measureText(label).width;
+    if (wt>gap) size=Math.max(8,11.5*gap/wt);
+  }
+  ctx.textAlign="center";
+  ctx.font="600 "+size.toFixed(1)+"px "+v('--sans');
+  ctx.fillStyle = active ? rgba(col,0.95) : DIM;
+  ctx.fillText(label, mid.x, mid.y + (side==="up"?-8:(side==="down"?15:-9)));
+  ctx.restore();
+};
+
+Stage.prototype.draw = function(){
+  var ctx=this.ctx, w=this.w, h=this.h, P=this.P, b=this.boxes;
+  ctx.clearRect(0,0,w,h);
+  var sans=v('--sans');
+
+  this.arrow(this.paths.SC, P.beta>0,  "initiation (\u03b2)",  COL.C, "mid");
+  this.arrow(this.paths.CK, P.gamma>0, "learning (\u03b3)",  COL.K, "mid");
+  this.arrow(this.paths.KS, P.omega>0, "skill decay (\u03c9)", COL.K, "up");
+  this.arrow(this.paths.SK, P.eta>0,   "asocial learning (\u03b7)", COL_E, "down");
+
+  if (P.mu>0){
+    ctx.save();
+    ctx.strokeStyle=rgba(COL.S,0.5); ctx.lineWidth=1.8;
+    ctx.beginPath();
+    ctx.moveTo(this.entry.x-Math.min(34,w*0.032), this.entry.y);
+    ctx.lineTo(b.S.x-5, this.entry.y); ctx.stroke();
+    ctx.fillStyle=rgba(COL.S,0.72);
+    ctx.beginPath();
+    ctx.moveTo(b.S.x-4,this.entry.y);
+    ctx.lineTo(b.S.x-12,this.entry.y-4.4);
+    ctx.lineTo(b.S.x-12,this.entry.y+4.4);
+    ctx.closePath(); ctx.fill();
+
+    ctx.textAlign="right"; ctx.font="600 11.5px "+sans;
+    var room=b.S.x-12, lines=["new offenders (\u03bc)"], size=11.5;
+    if (ctx.measureText(lines[0]).width>room){
+      lines=["new","offenders (\u03bc)"];
+      var widest=0;
+      for (var q=0;q<lines.length;q++) widest=Math.max(widest,ctx.measureText(lines[q]).width);
+      if (widest>room) size=Math.max(8,11.5*room/widest);
+    }
+    ctx.font="600 "+size.toFixed(1)+"px "+sans;
+    ctx.fillStyle=rgba(COL.S,0.9);
+    var lh=size*1.25, top=this.entry.y-11-(lines.length-1)*lh;
+    for (var li=0;li<lines.length;li++) ctx.fillText(lines[li], room, top+li*lh);
+
+    ["S","C","K"].forEach(function(k){
+      var bx=b[k], col=COL[k], ox=bx.cx+bx.w*0.30, y0=bx.y+bx.h, y1=y0+this.outLen;
+      ctx.strokeStyle=rgba(col,0.5); ctx.lineWidth=1.7;
+      ctx.beginPath(); ctx.moveTo(ox,y0); ctx.lineTo(ox,y1-4); ctx.stroke();
+      ctx.fillStyle=rgba(col,0.7);
+      ctx.beginPath(); ctx.moveTo(ox,y1); ctx.lineTo(ox-4.2,y1-8); ctx.lineTo(ox+4.2,y1-8);
+      ctx.closePath(); ctx.fill();
+    }, this);
+    ctx.textAlign="left"; ctx.fillStyle=MUTED; ctx.font="600 11px "+sans;
+    ctx.fillText("exits", b.K.cx+b.K.w*0.30+8, b.K.y+b.K.h+this.outLen-2);
+    ctx.restore();
+  }
+
+  ["S","C","K"].forEach(function(k){
+    var bx=b[k], col=COL[k], r=9;
+    ctx.beginPath();
+    ctx.moveTo(bx.x+r,bx.y);
+    ctx.arcTo(bx.x+bx.w,bx.y,bx.x+bx.w,bx.y+bx.h,r);
+    ctx.arcTo(bx.x+bx.w,bx.y+bx.h,bx.x,bx.y+bx.h,r);
+    ctx.arcTo(bx.x,bx.y+bx.h,bx.x,bx.y,r);
+    ctx.arcTo(bx.x,bx.y,bx.x+bx.w,bx.y,r);
+    ctx.closePath();
+    ctx.fillStyle=rgba(col,0.07); ctx.fill();
+    ctx.strokeStyle=rgba(col,0.38); ctx.lineWidth=1.1; ctx.stroke();
+  });
+
+  var rad = this.agents.length>380 ? 2.5 : (this.agents.length>200 ? 3.0 : 3.5);
+  for (var i=0;i<this.agents.length;i++){
+    var a=this.agents[i], col, alpha=1;
+    if (a.tr && a.tr.kind==="turn"){
+      col = COL[a.tr.phase==="out" ? a.tr.from : "S"];
+      alpha = a.tr.phase==="out" ? Math.max(0,1-a.tr.t) : Math.min(1,a.tr.t*1.6);
+    } else if (a.tr){
+      col = mixCol(COL[a.tr.from], COL[a.tr.to], Math.min(1,a.tr.t));
+    } else col = COL[a.st];
+    ctx.beginPath();
+    ctx.arc(a.x,a.y,rad,0,6.2832);
+    ctx.fillStyle=rgba(col,0.88*alpha); ctx.fill();
+  }
+
+  var names={S:"naive",C:"co-offending",K:"knowledgeable"};
+  ctx.textAlign="center";
+  ["S","C","K"].forEach(function(k){
+    var bx=b[k];
+    ctx.fillStyle=rgba(COL[k],0.95); ctx.font="600 12.5px "+sans;
+    ctx.fillText(names[k], bx.cx, bx.y-10);
+  });
+};
+
+Stage.prototype.frame = function(rdt){
+  if (!this.layout()) return;
+  if (this.needHome) this.placeAll();
+  this.acc += rdt*this.speed;
+  var guard=0;
+  while (this.acc>0.05 && guard<8){ this.step(0.05); this.acc-=0.05; guard++; }
+  this.advance(rdt);
+  this.draw();
+};
+
+/* ===================== closed forms ===================== */
+
+function theory(P){
+  var den=(P.mu+P.omega+P.eta)*(P.gamma+P.mu);
+  var R0 = den===0 ? null : P.beta*(P.mu+P.omega)/den;
+  var cofeS = (P.mu+P.omega+P.eta)>0 ? (P.mu+P.omega)/(P.mu+P.omega+P.eta) : 1;
+  var num = P.beta*(P.mu+P.omega)-(P.mu+P.omega+P.eta)*(P.gamma+P.mu);
+  var d2  = P.beta*(P.gamma+P.mu+P.omega);
+  if (num>0 && d2>0) return {R0:R0, S:(P.gamma+P.mu)/P.beta, C:num/d2, K:1-(P.gamma+P.mu)/P.beta-num/d2};
+  return {R0:R0, S:cofeS, C:0, K:1-cofeS};
+}
+
+/* ===================== wiring ===================== */
+
+var stage = new Stage(document.getElementById("cv"));
+window.__stage = stage;   // exposed for debugging
+var IDS = ["beta","gamma","omega","eta","mu"];
+var on = {omega:CFG.omega>0, eta:CFG.eta>0, mu:CFG.mu>0};
+var mag = {omega:CFG.omega||0.1, eta:CFG.eta||0.2, mu:CFG.mu||0.05};
+
+function apply(){
+  stage.P.beta  = parseFloat(document.getElementById("beta").value);
+  stage.P.gamma = parseFloat(document.getElementById("gamma").value);
+  ["omega","eta","mu"].forEach(function(k){
+    mag[k] = parseFloat(document.getElementById(k).value);
+    stage.P[k] = on[k] ? mag[k] : 0;
+    document.getElementById("c_"+(k==="omega"?"om":k)).setAttribute("data-on", on[k]?"1":"0");
+    document.getElementById("sl_"+k).className = "sl" + (on[k] ? "" : " off");
+  });
+  IDS.forEach(function(k){
+    document.getElementById("o_"+k).textContent = parseFloat(document.getElementById(k).value).toFixed(2);
+  });
+  document.getElementById("o_N").textContent = document.getElementById("N").value;
+
+  var th = theory(stage.P);
+  document.getElementById("rSt").textContent = "target " + (th.S*100).toFixed(0) + "%";
+  document.getElementById("rCt").textContent = "target " + (th.C*100).toFixed(0) + "%";
+  document.getElementById("rKt").textContent = "target " + (th.K*100).toFixed(0) + "%";
+  var rr=document.getElementById("rR"), rt=document.getElementById("rRt");
+  if (th.R0 === null){
+    rr.textContent="—"; rr.style.color=MUTED;
+    rt.textContent="undefined (0/0)";
+    document.getElementById("note").textContent =
+      "With \u03bc = \u03c9 = \u03b7 = 0 the model reduces to the baseline specification. Skill is permanent and the naive pool is never replenished, so co-offending dies out however large \u03b2 is.";
+  } else {
+    rr.textContent=th.R0.toFixed(2);
+    rr.style.color = th.R0>1 ? v('--C') : MUTED;
+    rt.textContent = th.R0>1 ? "endemic equilibrium" : "co-offending dies out";
+    document.getElementById("note").textContent =
+      "Dots are individual offenders. \u201cTarget\u201d is the equilibrium predicted by the closed-form solution; the simulation converges to it.";
+  }
+  var n = parseInt(document.getElementById("N").value,10);
+  if (stage.boxes) stage.resize(n);
+}
+
+IDS.concat(["N"]).forEach(function(k){
+  var el=document.getElementById(k);
+  el.value = k==="N" ? CFG.N : CFG[k];
+  el.addEventListener("input", apply);
+});
+
+[["c_om","omega"],["c_eta","eta"],["c_mu","mu"]].forEach(function(p){
+  document.getElementById(p[0]).addEventListener("click", function(){
+    on[p[1]] = !on[p[1]];
+    apply();
+  });
+});
+
+document.getElementById("c_reset").addEventListener("click", function(){
+  stage.seed(parseInt(document.getElementById("N").value,10), CFG.S0);
+});
+
+apply();
+
+var last=performance.now();
+function loop(now){
+  var rdt=Math.min(0.05,(now-last)/1000); last=now;
+  stage.frame(rdt);
+  var c=stage.counts();
+  if (c.N){
+    document.getElementById("rS").textContent=Math.round(100*c.S/c.N)+"%";
+    document.getElementById("rC").textContent=Math.round(100*c.C/c.N)+"%";
+    document.getElementById("rK").textContent=Math.round(100*c.K/c.N)+"%";
+  }
+  requestAnimationFrame(loop);
+}
+window.addEventListener("resize", function(){ stage.needHome=true; });
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
